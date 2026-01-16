@@ -82,7 +82,8 @@ def get_gemini_response(image, platform, resolution=None, extra_instruction=""):
     }
     """
     
-    model = genai.GenerativeModel('gemini-1.5-pro', system_instruction=sys_instruction)
+    # --- 關鍵修改：將模型更換為 'gemini-1.5-flash' 以解決 404 錯誤 ---
+    model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=sys_instruction)
     
     user_prompt = f"我的目標平台是：{platform}。"
     if resolution:
@@ -139,5 +140,7 @@ with col2:
                         st.json({"Platform": platform, "Resolution": resolution})
                 except Exception as e:
                     st.error(f"錯誤：{str(e)}")
+                    st.info("💡 如果持續出現 Model not found，請確認您的 API Key 是否開通了 Gemini 權限。")
+
     elif not uploaded_file:
         st.info("👈 請在左側上傳圖片")
