@@ -36,6 +36,16 @@ st.markdown("""
 with st.sidebar:
     st.header("⚙️ 設定")
     
+    # 顯示當前 SDK 版本 (除錯用)
+    try:
+        st.caption(f"🔧 SDK Version: {genai.__version__}")
+        if genai.__version__ < "0.8.3":
+            st.error("⚠️ 版本過舊！請更新 requirements.txt")
+        else:
+            st.success("✅ 版本正確，支援生圖")
+    except:
+        pass
+
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
         st.success("✅ 已自動載入系統 API Key")
@@ -144,39 +154,43 @@ with col2:
                     try:
                         # 使用 Imagen 3 模型
                         # 注意：這是 Google Cloud 標準付費模型的名稱
-                        imagen_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
-                        
-                        # 設定比例 (根據平台選擇)
-                        ar = "1:1"
-                        if "9:16" in platform: ar = "9:16"
-                        elif "16:9" in platform: ar = "16:9"
-                        elif "3:4" in platform: ar = "3:4"
-                        
-                        # 開始生圖
-                        result = imagen_model.generate_images(
-                            prompt=prompt_text,
-                            number_of_images=1,
-                            aspect_ratio=ar,
-                            safety_filter_level="block_only_high",
-                            person_generation="allow_adult"
-                        )
-                        
-                        # 顯示圖片
-                        generated_image = result.images[0]
-                        st.image(generated_image, caption=f"生成結果 ({platform})", use_column_width=True)
-                        
-                        # --- 下載按鈕 ---
-                        # 將圖片轉換為字節流以便下載
-                        img_byte_arr = io.BytesIO()
-                        generated_image.save(img_byte_arr, format='PNG')
-                        img_byte_arr = img_byte_arr.getvalue()
-                        
-                        st.download_button(
-                            label="📥 下載圖片 (Download PNG)",
-                            data=img_byte_arr,
-                            file_name="generated_cover.png",
-                            mime="image/png"
-                        )
+                        # 這裡加了一個安全檢查，防止舊版本報錯卡死
+                        if hasattr(genai, 'ImageGenerationModel'):
+                            imagen_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
+                            
+                            # 設定比例 (根據平台選擇)
+                            ar = "1:1"
+                            if "9:16" in platform: ar = "9:16"
+                            elif "16:9" in platform: ar = "16:9"
+                            elif "3:4" in platform: ar = "3:4"
+                            
+                            # 開始生圖
+                            result = imagen_model.generate_images(
+                                prompt=prompt_text,
+                                number_of_images=1,
+                                aspect_ratio=ar,
+                                safety_filter_level="block_only_high",
+                                person_generation="allow_adult"
+                            )
+                            
+                            # 顯示圖片
+                            generated_image = result.images[0]
+                            st.image(generated_image, caption=f"生成結果 ({platform})", use_column_width=True)
+                            
+                            # --- 下載按鈕 ---
+                            img_byte_arr = io.BytesIO()
+                            generated_image.save(img_byte_arr, format='PNG')
+                            img_byte_arr = img_byte_arr.getvalue()
+                            
+                            st.download_button(
+                                label="📥 下載圖片 (Download PNG)",
+                                data=img_byte_arr,
+                                file_name="generated_cover.png",
+                                mime="image/png"
+                            )
+                        else:
+                             st.error("⚠️ 偵測到舊版工具包！請確保 requirements.txt 已更新並重啟 App。")
+                             st.info(f"當前版本: {genai.__version__}")
                         
                     except Exception as e:
                         st.error("❌ 階段二失敗 (圖片生成)：")
