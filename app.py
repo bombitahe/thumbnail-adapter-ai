@@ -28,7 +28,7 @@ with st.sidebar:
         api_key = st.text_input("Google Gemini API Key", type="password")
         
     st.markdown("---")
-    st.caption("🔥 Mode: Gemini 3 Pro (All-in-One)")
+    st.caption("🔥 Mode: Gemini 2.5 Flash Image (High Speed)")
 
 # --- 4. 主界面 ---
 st.title("🎨 VisualAdapt AI (Pro)")
@@ -46,7 +46,7 @@ with col1:
         extra_inst = st.text_area("额外指令", placeholder="例如：背景改为赛博朋克...")
         generate_btn = st.button("🚀 生成图片 (Generate)")
 
-# --- 5. 核心逻辑 (Gemini 3 Pro 原生生图版) ---
+# --- 5. 核心逻辑 ---
 with col2:
     st.subheader("3. 生成结果")
     
@@ -54,7 +54,7 @@ with col2:
         if not api_key:
             st.error("❌ 请先配置 API Key")
         else:
-            # 1. 先用 Gemini 2.5 Flash 快速写指令 (为了省钱和速度)
+            # 1. 构思画面 (SDK)
             prompt_text = ""
             with st.spinner("🧠 阶段 1/2：正在构思画面..."):
                 try:
@@ -73,16 +73,15 @@ with col2:
                     st.error(f"文字生成失败: {e}")
                     st.stop()
 
-            # 2. 呼叫 Gemini 3 Pro 直接生图 (REST API)
+            # 2. 生成图片 (REST API)
             if prompt_text:
-                with st.spinner("🎨 阶段 2/2：Gemini 3 Pro 正在绘图..."):
+                with st.spinner("🎨 阶段 2/2：Gemini 2.5 Flash 正在绘图..."):
                     try:
-                        # 👇 关键修改：使用你列表里的 Gemini 3 Pro Image Preview 模型
-                        # 注意：Gemini 生图使用的是 generateContent 接口，不是 predict
-                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key={api_key}"
+                        # 👇 关键修改：换成了列表第 23 项 'gemini-2.5-flash-image'
+                        # 这个模型通常配额更多，速度更快
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={api_key}"
                         headers = {'Content-Type': 'application/json'}
                         
-                        # 转换比例 (Gemini 3 原生支持比例描述，我们在 Prompt 里加强)
                         final_prompt = f"Generate an image of: {prompt_text}. Aspect Ratio: {platform}"
 
                         payload = {
@@ -95,11 +94,8 @@ with col2:
                         
                         if response.status_code == 200:
                             data = response.json()
-                            # 解析 Gemini 的内嵌图片数据
+                            img_b64 = None
                             try:
-                                # Gemini 返回图片通常在 parts 里的 inline_data 或者是 file_uri
-                                # 这里尝试解析 inline_data (Base64)
-                                img_b64 = None
                                 candidates = data.get('candidates', [])
                                 if candidates:
                                     parts = candidates[0].get('content', {}).get('parts', [])
@@ -111,7 +107,7 @@ with col2:
                                 if img_b64:
                                     img_data = base64.b64decode(img_b64)
                                     result_image = Image.open(io.BytesIO(img_data))
-                                    st.image(result_image, caption="Gemini 3 Pro 生成结果", use_column_width=True)
+                                    st.image(result_image, caption="生成结果", use_column_width=True)
                                     
                                     st.download_button(
                                         label="📥 下载图片 (Download PNG)",
@@ -120,16 +116,18 @@ with col2:
                                         mime="image/png"
                                     )
                                 else:
-                                    # 如果没返回图片，可能是被安全拦截或返回了纯文本
-                                    st.warning("⚠️ 生成完成，但未检测到图片数据。可能原因：")
-                                    st.json(data) # 打印出来看看
+                                    st.warning("⚠️ 未检测到图片数据，可能被安全策略拦截。")
+                                    st.json(data)
                             except Exception as e:
-                                st.error(f"解析图片失败: {e}")
-                                st.json(data)
+                                st.error(f"解析失败: {e}")
+                        
+                        # 429 错误处理：如果 Flash 也满了，提示明天再来
+                        elif response.status_code == 429:
+                            st.error("❌ 配额耗尽 (Quota Exceeded)")
+                            st.warning("您今天的生图配额已用完。请明天再试，或使用上方的 Prompt 去 Midjourney 生成。")
                         else:
                             st.error(f"❌ 请求失败 (Status: {response.status_code})")
                             st.code(response.text)
-                            st.caption("如果依然 404，请尝试在代码第 78 行把模型名改为 'gemini-2.0-flash-exp'")
 
                     except Exception as e:
                         st.error(f"❌ 网络请求错误: {e}")
