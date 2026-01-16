@@ -44,12 +44,11 @@ with st.sidebar:
             
     st.markdown("---")
     st.info("專為創作者設計，自動生成多平台適配指令。")
-    # 顯示當前使用的超前版本模型
-    st.caption("🔥 Powered by Gemini 2.5 Flash")
+    st.caption("🔥 Powered by Gemini 2.5 Flash (Paid)")
 
 # --- 4. 主標題 ---
 st.title("🎨 VisualAdapt AI")
-st.markdown("### 跨平台縮圖與專輯封面適配器 (Gemini 2.5/3.0 版)")
+st.markdown("### 跨平台縮圖與專輯封面適配器")
 
 # --- 5. 介面佈局 ---
 col1, col2 = st.columns([1, 1.5], gap="large")
@@ -84,7 +83,7 @@ with col1:
         extra_inst = st.text_area("額外指令 (選填)", placeholder="例如：背景改為賽博龐克風格...")
         generate_btn = st.button("🚀 生成適配指令")
 
-# --- 6. 生成邏輯 (針對您的帳號型號特別定制) ---
+# --- 6. 生成邏輯 (針對您的 Gemini 2.5 Flash 帳號優化) ---
 with col2:
     st.subheader("3. 生成結果")
     
@@ -96,7 +95,6 @@ with col2:
                 try:
                     genai.configure(api_key=api_key)
                     
-                    # 組合提示詞
                     final_prompt = f"Target Platform: {platform}. "
                     if resolution:
                         final_prompt += f"Target Resolution: {resolution}. "
@@ -106,37 +104,41 @@ with col2:
                     sys_prompt = """
                     You are an expert AI art director.
                     Mission: Recompose the image for the target platform.
-                    Rules:
-                    1. Output specific aspect ratios.
-                    2. If changing from Landscape to Portrait, use "Shift and Scale" logic, don't just extend borders.
-                    3. Output format must be JSON: { "platform": "...", "prompt": "..." }
+                    Output Format: ONLY pure JSON. No markdown backticks.
+                    JSON Structure: { "platform": "...", "prompt": "..." }
                     """
                     
-                    # --- 關鍵修改：使用您診斷列表中的第 0 項模型 ---
-                    # 您的帳號支援 2.5 Flash，這是目前最新最快的選擇
+                    # 使用您帳號中驗證過可用的模型
                     model_name = 'models/gemini-2.5-flash' 
                     
                     try:
                         model = genai.GenerativeModel(model_name, system_instruction=sys_prompt)
                         response = model.generate_content([final_prompt, image])
+                        
+                        # --- 🧹 自動清理格式代碼 ---
+                        # 這是新增的：去掉 ```json 和 ``` 這些多餘符號
+                        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+
                     except Exception:
-                        # 如果 2.5 Flash 失敗，嘗試您的 3.0 Pro Preview
+                        # 備用方案
                         st.warning("嘗試切換至 Gemini 3 Pro Preview...")
                         model_name = 'models/gemini-3-pro-preview'
                         model = genai.GenerativeModel(model_name, system_instruction=sys_prompt)
                         response = model.generate_content([final_prompt, image])
+                        clean_text = response.text.replace("```json", "").replace("```", "").strip()
 
                     # 顯示結果
                     st.success(f"生成完成！(使用模型: {model_name})")
                     
                     tab1, tab2 = st.tabs(["📋 生圖 Prompt", "🔍 完整數據"])
                     with tab1:
-                        st.code(response.text, language="json")
+                        # 這裡顯示清理過的乾淨代碼
+                        st.code(clean_text, language="json")
                     with tab2:
                         st.json({"Platform": platform, "Resolution": resolution, "Model": model_name})
                         
                 except Exception as e:
-                    st.error("發生錯誤，請截圖給開發者：")
+                    st.error("發生錯誤：")
                     st.error(f"錯誤詳情: {str(e)}")
                     
     elif not uploaded_file:
