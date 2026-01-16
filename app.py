@@ -1,5 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
+# 👇 關鍵修改：直接從庫裡面把生圖功能「硬抓」出來
+from google.generativeai import ImageGenerationModel 
 from PIL import Image
 import json
 import io
@@ -26,7 +28,6 @@ st.markdown("""
     .stSelectbox, .stTextInput, .stTextArea {
         border-radius: 8px;
     }
-    /* 隱藏多餘元素 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
@@ -36,13 +37,9 @@ st.markdown("""
 with st.sidebar:
     st.header("⚙️ 設定")
     
-    # 顯示當前 SDK 版本 (除錯用)
+    # 版本檢查顯示
     try:
         st.caption(f"🔧 SDK Version: {genai.__version__}")
-        if genai.__version__ < "0.8.3":
-            st.error("⚠️ 版本過舊！請更新 requirements.txt")
-        else:
-            st.success("✅ 版本正確，支援生圖")
     except:
         pass
 
@@ -87,7 +84,6 @@ with col1:
             ("TikTok (9:16)", "Instagram (1:1)", "YouTube (16:9)", "小紅書 (3:4)", "Album Cover (1:1)")
         )
         
-        # 解析度只影響 Prompt 的描述，生圖模型通常有固定比例
         if "Instagram" in platform or "Album Cover" in platform:
             resolution = st.selectbox(
                 "輸出解析度 (1:1 專用)",
@@ -97,7 +93,7 @@ with col1:
         extra_inst = st.text_area("額外指令 (選填)", placeholder="例如：背景改為賽博龐克風格...")
         generate_btn = st.button("🚀 生成圖片 (Generate Image)")
 
-# --- 6. 雙重生成邏輯 (大腦+畫家) ---
+# --- 6. 雙重生成邏輯 ---
 with col2:
     st.subheader("3. 生成結果")
     
@@ -112,8 +108,7 @@ with col2:
             prompt_text = ""
             with st.spinner("🧠 階段 1/2：Gemini 正在分析構圖並撰寫繪圖指令..."):
                 try:
-                    # 使用您帳號中可用的 Gemini 模型
-                    # 優先嘗試 2.5 Flash
+                    # 使用 2.5 Flash (目前最穩)
                     model_name_llm = 'models/gemini-2.5-flash'
                     
                     sys_prompt = """
@@ -121,7 +116,7 @@ with col2:
                     Mission: Analyze the uploaded image and write a detailed text prompt to RE-GENERATE this image for a new aspect ratio.
                     Rules:
                     1. Describe the main subject, style, lighting, and colors in detail.
-                    2. Adjust the description to fit the target platform's aspect ratio (e.g., extend background for vertical).
+                    2. Adjust the description to fit the target platform's aspect ratio.
                     3. Output Format: ONLY pure JSON string. { "prompt": "..." }
                     """
                     
@@ -131,11 +126,10 @@ with col2:
                         model = genai.GenerativeModel(model_name_llm, system_instruction=sys_prompt)
                         response = model.generate_content([user_content, image])
                     except:
-                        # 備用：如果 2.5 失敗，用 1.5 Pro
+                        # 備用方案
                         model = genai.GenerativeModel('models/gemini-1.5-pro', system_instruction=sys_prompt)
                         response = model.generate_content([user_content, image])
 
-                    # 清理 JSON
                     clean_json = response.text.replace("```json", "").replace("```", "").strip()
                     prompt_data = json.loads(clean_json)
                     prompt_text = prompt_data.get("prompt", "")
@@ -150,52 +144,46 @@ with col2:
 
             # --- 階段二：Imagen 畫家作畫 (生成圖片) ---
             if prompt_text:
-                with st.spinner("🎨 階段 2/2：Imagen 3 正在繪製圖片 (這需要一點時間)..."):
+                with st.spinner("🎨 階段 2/2：Imagen 3 正在繪製圖片..."):
                     try:
-                        # 使用 Imagen 3 模型
-                        # 注意：這是 Google Cloud 標準付費模型的名稱
-                        # 這裡加了一個安全檢查，防止舊版本報錯卡死
-                        if hasattr(genai, 'ImageGenerationModel'):
-                            imagen_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
-                            
-                            # 設定比例 (根據平台選擇)
-                            ar = "1:1"
-                            if "9:16" in platform: ar = "9:16"
-                            elif "16:9" in platform: ar = "16:9"
-                            elif "3:4" in platform: ar = "3:4"
-                            
-                            # 開始生圖
-                            result = imagen_model.generate_images(
-                                prompt=prompt_text,
-                                number_of_images=1,
-                                aspect_ratio=ar,
-                                safety_filter_level="block_only_high",
-                                person_generation="allow_adult"
-                            )
-                            
-                            # 顯示圖片
-                            generated_image = result.images[0]
-                            st.image(generated_image, caption=f"生成結果 ({platform})", use_column_width=True)
-                            
-                            # --- 下載按鈕 ---
-                            img_byte_arr = io.BytesIO()
-                            generated_image.save(img_byte_arr, format='PNG')
-                            img_byte_arr = img_byte_arr.getvalue()
-                            
-                            st.download_button(
-                                label="📥 下載圖片 (Download PNG)",
-                                data=img_byte_arr,
-                                file_name="generated_cover.png",
-                                mime="image/png"
-                            )
-                        else:
-                             st.error("⚠️ 偵測到舊版工具包！請確保 requirements.txt 已更新並重啟 App。")
-                             st.info(f"當前版本: {genai.__version__}")
+                        # 👇 這裡直接使用我們開頭強制引用的 Class，不再通過 genai.ImageGenerationModel
+                        imagen_model = ImageGenerationModel("imagen-3.0-generate-001")
+                        
+                        # 設定比例
+                        ar = "1:1"
+                        if "9:16" in platform: ar = "9:16"
+                        elif "16:9" in platform: ar = "16:9"
+                        elif "3:4" in platform: ar = "3:4"
+                        
+                        # 開始生圖
+                        result = imagen_model.generate_images(
+                            prompt=prompt_text,
+                            number_of_images=1,
+                            aspect_ratio=ar,
+                            safety_filter_level="block_only_high",
+                            person_generation="allow_adult"
+                        )
+                        
+                        # 顯示圖片
+                        generated_image = result.images[0]
+                        st.image(generated_image, caption=f"生成結果 ({platform})", use_column_width=True)
+                        
+                        # 下載按鈕
+                        img_byte_arr = io.BytesIO()
+                        generated_image.save(img_byte_arr, format='PNG')
+                        img_byte_arr = img_byte_arr.getvalue()
+                        
+                        st.download_button(
+                            label="📥 下載圖片 (Download PNG)",
+                            data=img_byte_arr,
+                            file_name="generated_cover.png",
+                            mime="image/png"
+                        )
                         
                     except Exception as e:
                         st.error("❌ 階段二失敗 (圖片生成)：")
-                        st.warning(f"您的 API Key 可能沒有 Imagen 3 的存取權限，或者該模型名稱在您的區域尚未開放。\n錯誤訊息：{e}")
-                        st.info("💡 建議：您可以複製上面的英文咒語，去 Midjourney 生成。")
+                        st.warning(f"技術細節錯誤：{e}")
+                        st.info("💡 如果出現 'PermissionDenied' 或 '404'，代表您的 Google 帳號所在區域尚未完全開放 Imagen 3 API，請稍候再試或使用 Prompt 去 Midjourney 生成。")
 
     elif not uploaded_file:
         st.info("👈 請先在左側上傳一張圖片")
