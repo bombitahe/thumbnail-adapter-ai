@@ -92,4 +92,93 @@ def get_gemini_response(image, platform, resolution=None, extra_instruction=""):
     if resolution:
         user_prompt += f" 請強制輸出解析度為：{resolution}。"
     if extra_instruction:
-        user_prompt += f" 額外使用者要求：{extra
+        user_prompt += f" 額外使用者要求：{extra_instruction}。"
+    
+    # 開始生成
+    response = model.generate_content([user_prompt, image])
+    return response.text
+
+# --- 6. 介面佈局：左右分欄 ---
+# 左邊 (col1) 放設定，右邊 (col2) 放結果
+col1, col2 = st.columns([1, 1.5], gap="large")
+
+with col1:
+    st.subheader("1. 來源與設定")
+    
+    # 上傳區
+    uploaded_file = st.file_uploader("上傳原始圖片 (JPG/PNG)", type=["jpg", "png", "jpeg"])
+    
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="原始圖片預覽", use_column_width=True)
+        
+        with st.container():
+            st.markdown("#### 2. 參數配置")
+            
+            # --- 關鍵修改：加入 Album Cover 選項 ---
+            platform = st.selectbox(
+                "目標平台",
+                (
+                    "TikTok (9:16)", 
+                    "Instagram (1:1)", 
+                    "YouTube (16:9)", 
+                    "小紅書 (3:4)", 
+                    "Album Cover (1:1)"
+                )
+            )
+            
+            resolution = None
+            # --- 關鍵修改：如果是 IG 或 專輯封面，都要顯示解析度選單 ---
+            if "Instagram" in platform or "Album Cover" in platform:
+                resolution = st.selectbox(
+                    "輸出解析度 (1:1 專用)",
+                    ("1400x1400", "1600x1600", "1800x1800", "3000x3000 (發行級)")
+                )
+            
+            extra_inst = st.text_area("額外指令 (選填)", placeholder="例如：背景改為賽博龐克風格，保持文字清晰...")
+            
+            generate_btn = st.button("🚀 生成適配指令")
+
+with col2:
+    st.subheader("3. 生成結果")
+    
+    if uploaded_file and generate_btn:
+        if not api_key:
+            st.error("❌ 請先在左側邊欄輸入 API Key 才能開始工作。")
+        else:
+            with st.spinner("🤖 AI 正在解構圖片並重新排版..."):
+                try:
+                    result = get_gemini_response(image, platform, resolution, extra_inst)
+                    st.success("生成完成！")
+                    
+                    # 使用 Tabs 分頁顯示，讓畫面更乾淨
+                    tab1, tab2 = st.tabs(["📋 生圖 Prompt (複製用)", "🔍 完整分析"])
+                    
+                    with tab1:
+                        st.markdown("##### 請複製以下指令到您的生圖工具 (Midjourney/Stable Diffusion)：")
+                        st.code(result, language="json")
+                        st.info("💡 提示：此 Prompt 已包含畫面重構與解析度參數。")
+                    
+                    with tab2:
+                        st.markdown("**參數確認：**")
+                        st.json({
+                            "Target Platform": platform,
+                            "Resolution": resolution if resolution else "Auto/Default",
+                            "Custom Instruction": extra_inst if extra_inst else "None"
+                        })
+                except Exception as e:
+                    st.error(f"發生錯誤：{str(e)}")
+                    st.warning("請檢查您的 API Key 是否正確，或是圖片是否過大。")
+    
+    elif not uploaded_file:
+        # 空狀態顯示
+        st.info("👈 請在左側上傳圖片以開始使用")
+        st.markdown(
+            """
+            <div style="text-align: center; color: #666; padding: 40px; border: 2px dashed #ccc; border-radius: 10px;">
+                <p>等待圖片上傳...</p>
+                <small>支援 JPG, PNG 格式</small>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
